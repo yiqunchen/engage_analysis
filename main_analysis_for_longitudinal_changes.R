@@ -1,4 +1,3 @@
-
 library('readxl')
 library("tidyverse")
 # new packages!
@@ -9,12 +8,10 @@ library(broom.mixed)
 library(corrplot)
 
 # Load data
-#data <- read_excel("~/Downloads/Engage_Data_NAN_2021.xlsx")
 igtd <- read_excel("~/Downloads/Engage_IGT_NAN_2021.xlsx")
 wcstd <- read_excel("~/Downloads/Engage_WCST_NAN_2021.xlsx")
 data <- read_excel("~/Downloads/Engage_Raw.xlsx", sheet = "DATASET")
 # we first need to clean the data a little bit 
-data
 table(data$timepoint)
 # for this project we are gonna keep only up to wk8
 
@@ -55,7 +52,6 @@ merged.f[merged.f==9999] <- NA
 # visualize analysis
 df_analysis <- merged.f %>%
   arrange(patient_id, timepoint)
-head(df_analysis, 10)
 
 # let's say that we are focused on HVLT delayed recall at baseline 
 df_analysis$HVLTDelayedRecall
@@ -65,7 +61,7 @@ summary(df_analysis$HVLTDelayedRecall)
 
 
 visual_temp <- df_analysis %>% 
-  select(patient_id, HVLTDelayedRecall)
+  dplyr::select(patient_id, HVLTDelayedRecall)
 
 baseline_temp <- df_analysis %>% 
   filter(week == 0) %>%
@@ -81,6 +77,11 @@ df_analysis <- df_analysis %>%
 df_analysis %>% select(patient_id, timepoint, baseline_HVLTDelayedRecall)
 df_analysis$baseline_HVLTDelayedRecall
 
+df_analysis <- df_analysis %>%
+  mutate(Treatment = case_when(
+    Treatment %in% c("Engage", "ENGAGE") ~ "ENGAGE",
+    TRUE ~ as.character(Treatment)
+  ))
 # overall spaghetti plot
 ggplot(df_analysis, 
        aes(x = week, y=Ham24tot, group=patient_id)) +
@@ -141,196 +142,102 @@ corrplot(cor_mat, method="color", col=col(200),type="upper",
          addCoef.col = "black",
          tl.col="black", tl.srt=45)
 
+# Function to create baseline variable if it doesn't exist
+create_baseline <- function(df, var_name) {
+  baseline_var <- paste0("baseline_", var_name)
+  
+  if (baseline_var %in% names(df)) {
+    return(df)
+  }
+  
+  baseline <- df %>% 
+    filter(week == 0) %>%
+    select(patient_id, !!sym(var_name)) %>%
+    rename_with(~paste0("baseline_", .), -patient_id)
+  
+  df %>% left_join(baseline, by = "patient_id")
+}
+cognitive_measures <- c("Stroop3", "DSB", "Total_Money", "TOTALErr", "HVLTDelayedRecall")
+for (measure in cognitive_measures){
+  df_analysis <- create_baseline(df_analysis, measure)
+}
 
-#### restrict to a population of choice
+# HVLTDelayedRecall
+lmm_adjusted_hvlt <- lme(fixed = whodastotpro ~ baseline_HVLTDelayedRecall + week + Age + as.factor(Race) + as.factor(Gender) + Treatment,
+                         random = ~1 + week | patient_id,
+                         data = df_analysis,
+                         na.action = na.omit)
 
+print(summary(lmm_adjusted_hvlt))
+print(tidy(lmm_adjusted_hvlt, conf.int = TRUE))
 
+# DSB
+lmm_adjusted_dsb <- lme(fixed = whodastotpro ~ baseline_DSB + week + Age + as.factor(Race) + as.factor(Gender) + Treatment,
+                        random = ~1 + week | patient_id,
+                        data = df_analysis,
+                        na.action = na.omit)
 
-lmm_unadjust_rand_int <- lme(fixed=Ham24tot ~ baseline_HVLTDelayedRecall+week, 
-                               random=reStruct(~1 | patient_id, REML=TRUE), 
-                               data=df_analysis,
-                               subset= !is.na(baseline_HVLTDelayedRecall),
-                               na.action=na.omit)
+print(summary(lmm_adjusted_dsb))
+print(tidy(lmm_adjusted_dsb, conf.int = TRUE))
 
-summary(lmm_unadjust_rand_int)
-tidy(lmm_unadjust_rand_int, conf.int = TRUE)
+# Total_Money
+lmm_adjusted_money <- lme(fixed = whodastotpro ~ baseline_Total_Money + week + Age + as.factor(Race) + as.factor(Gender) + Treatment,
+                          random = ~1 + week | patient_id,
+                          data = df_analysis,
+                          na.action = na.omit)
 
+print(summary(lmm_adjusted_money))
+print(tidy(lmm_adjusted_money, conf.int = TRUE))
 
+# TOTALErr
+lmm_adjusted_totalerr <- lme(fixed = whodastotpro ~ baseline_TOTALErr + week + Age + as.factor(Race) + as.factor(Gender) + Treatment,
+                             random = ~1 + week | patient_id,
+                             data = df_analysis,
+                             na.action = na.omit)
 
+print(summary(lmm_adjusted_totalerr))
+print(tidy(lmm_adjusted_totalerr, conf.int = TRUE))
 
-lmm_unadjust_rand_slope <- lme(fixed=Ham24tot ~ baseline_HVLTDelayedRecall+week, 
-                    random=reStruct(~1+week | patient_id, REML=TRUE), 
-                    data=df_analysis,
-                    subset= !is.na(baseline_HVLTDelayedRecall),
-                    na.action=na.omit)
+# Stroop3
+lmm_adjusted_stroop3 <- lme(fixed = whodastotpro ~ baseline_Stroop3 + week + Age + as.factor(Race) + as.factor(Gender) + Treatment,
+                            random = ~1 + week | patient_id,
+                            data = df_analysis,
+                            na.action = na.omit)
 
-summary(lmm_unadjust_rand_slope)
-tidy(lmm_unadjust_rand_slope, conf.int = TRUE)
-
-
-
-lmm_adjusted_rand_slope <- lme(fixed=Ham24tot ~ baseline_HVLTDelayedRecall+week+
-                                 Age+
-                                 as.factor(Race)+as.factor(Gender)+Treatment, 
-                             random=reStruct(~1+week | patient_id, REML=TRUE), 
-                             data=df_analysis,
-                             subset= !is.na(baseline_HVLTDelayedRecall),
-                             na.action=na.omit)
-
-summary(lmm_adjusted_rand_slope)
-tidy(lmm_adjusted_rand_slope, conf.int = TRUE)
-
-
-baseline_dsb <- df_analysis %>% 
-  filter(week == 0) %>%
-  select(patient_id, DSB) %>%
-  mutate(baseline_DSB = DSB) %>%
-  select(-DSB)
-
-df_analysis <- df_analysis %>% 
-  left_join(baseline_dsb, by = "patient_id")
-
-
-lmm_unadjust_rand_slope <- lme(fixed=Ham24tot ~ baseline_DSB+week, 
-                               random=reStruct(~1+week | patient_id, REML=TRUE), 
-                               data=df_analysis,
-                               subset= !is.na(baseline_DSB),
-                               na.action=na.omit)
-
-summary(lmm_unadjust_rand_slope)
-tidy(lmm_unadjust_rand_slope, conf.int = TRUE)
-
-lmm_adjusted_rand_slope <- lme(fixed=Ham24tot ~ baseline_DSB+week+
-                                 Age+
-                                 as.factor(Race)+as.factor(Gender)+Treatment, 
-                               random=reStruct(~1+week | patient_id, REML=TRUE), 
-                               data=df_analysis,
-                               subset= !is.na(baseline_DSB),
-                               na.action=na.omit)
-
-summary(lmm_adjusted_rand_slope)
-tidy(lmm_adjusted_rand_slope, conf.int = TRUE)
-
-#### 
-baseline_dsb <- df_analysis %>% 
-  filter(week == 0) %>%
-  select(patient_id, DSB) %>%
-  mutate(baseline_DSB = DSB) %>%
-  select(-DSB)
-
-df_analysis <- df_analysis %>% 
-  left_join(baseline_dsb, by = "patient_id")
-
-lmm_unadjust_rand_slope <- lme(fixed=Ham24tot ~ baseline_DSB+week, 
-                               random=reStruct(~1+week | patient_id, REML=TRUE), 
-                               data=df_analysis,
-                               subset= !is.na(baseline_DSB),
-                               na.action=na.omit)
-
-summary(lmm_unadjust_rand_slope)
-tidy(lmm_unadjust_rand_slope, conf.int = TRUE)
-
-lmm_adjusted_rand_slope <- lme(fixed=Ham24tot ~ baseline_DSB+week+
-                                 Age+
-                                 as.factor(Race)+as.factor(Gender)+Treatment, 
-                               random=reStruct(~1+week | patient_id, REML=TRUE), 
-                               data=df_analysis,
-                               subset= !is.na(baseline_DSB),
-                               na.action=na.omit)
-
-summary(lmm_adjusted_rand_slope)
-tidy(lmm_adjusted_rand_slope, conf.int = TRUE)
-
-#### 
-baseline_Total_Money <- df_analysis %>% 
-  filter(week == 0) %>%
-  select(patient_id, Total_Money) %>%
-  mutate(baseline_Total_Money = Total_Money) %>%
-  select(-Total_Money)
-
-df_analysis <- df_analysis %>% 
-  left_join(baseline_Total_Money, by = "patient_id")
-
-lmm_unadjust_rand_slope <- lme(fixed=Ham24tot ~ baseline_Total_Money+week, 
-                               random=reStruct(~1+week | patient_id, REML=TRUE), 
-                               data=df_analysis,
-                               subset= !is.na(baseline_Total_Money),
-                               na.action=na.omit)
-
-summary(lmm_unadjust_rand_slope)
-tidy(lmm_unadjust_rand_slope, conf.int = TRUE)
-
-lmm_adjusted_rand_slope <- lme(fixed=Ham24tot ~ baseline_Total_Money+week+
-                                 Age+
-                                 as.factor(Race)+as.factor(Gender)+Treatment, 
-                               random=reStruct(~1+week | patient_id, REML=TRUE), 
-                               data=df_analysis,
-                               subset= !is.na(baseline_Total_Money),
-                               na.action=na.omit)
-
-summary(lmm_adjusted_rand_slope)
-tidy(lmm_adjusted_rand_slope, conf.int = TRUE)
-
-#### 
-baseline_TOTALErr <- df_analysis %>% 
-  filter(week == 0) %>%
-  select(patient_id, TOTALErr) %>%
-  mutate(baseline_TOTALErr = TOTALErr) %>%
-  select(-TOTALErr)
-
-df_analysis <- df_analysis %>% 
-  left_join(baseline_TOTALErr, by = "patient_id")
-
-lmm_unadjust_rand_slope <- lme(fixed=Ham24tot ~ baseline_TOTALErr+week, 
-                               random=reStruct(~1+week | patient_id, REML=TRUE), 
-                               data=df_analysis,
-                               subset= !is.na(baseline_TOTALErr),
-                               na.action=na.omit)
-
-summary(lmm_unadjust_rand_slope)
-tidy(lmm_unadjust_rand_slope, conf.int = TRUE)
-
-lmm_adjusted_rand_slope <- lme(fixed=Ham24tot ~ baseline_TOTALErr+week+
-                                 Age+
-                                 as.factor(Race)+as.factor(Gender)+Treatment, 
-                               random=reStruct(~1+week | patient_id, REML=TRUE), 
-                               data=df_analysis,
-                               subset= !is.na(baseline_TOTALErr),
-                               na.action=na.omit)
-
-summary(lmm_adjusted_rand_slope)
-tidy(lmm_adjusted_rand_slope, conf.int = TRUE)
+print(summary(lmm_adjusted_stroop3))
+print(tidy(lmm_adjusted_stroop3, conf.int = TRUE))
 
 
-#### 
-baseline_Stroop3 <- df_analysis %>% 
-  filter(week == 0) %>%
-  select(patient_id, Stroop3) %>%
-  mutate(baseline_Stroop3 = Stroop3) %>%
-  select(-Stroop3)
+# List of cognitive measures
+cognitive_measures <- c("HVLTDelayedRecall", "DSB", "Total_Money", "TOTALErr", "Stroop3")
 
-df_analysis <- df_analysis %>% 
-  left_join(baseline_Stroop3, by = "patient_id")
+# Function to run LMM for a given cognitive measure
+run_lmm <- function(measure, data) {
+  formula <- as.formula(paste("Ham24tot ~ baseline_", measure, 
+                              " + week + Age + as.factor(Race) + as.factor(Gender) + Treatment", 
+                              sep = ""))
+  
+  model <- lme(fixed = formula,
+               random = ~1 + week | patient_id,
+               data = data,
+               na.action = na.omit)
+  
+  print(paste("Results for", measure))
+  print(summary(model))
+  print(tidy(model, conf.int = TRUE))
+  
+  return(model)
+}
 
-lmm_unadjust_rand_slope <- lme(fixed=Ham24tot ~ baseline_Stroop3+week, 
-                               random=reStruct(~1+week | patient_id, REML=TRUE), 
-                               data=df_analysis,
-                               subset= !is.na(baseline_Stroop3),
-                               na.action=na.omit)
-
-summary(lmm_unadjust_rand_slope)
-tidy(lmm_unadjust_rand_slope, conf.int = TRUE)
-
-lmm_adjusted_rand_slope <- lme(fixed=Ham24tot ~ baseline_Stroop3+week+
-                                 Age+
-                                 as.factor(Race)+as.factor(Gender)+Treatment, 
-                               random=reStruct(~1+week | patient_id, REML=TRUE), 
-                               data=df_analysis,
-                               subset= !is.na(baseline_Stroop3),
-                               na.action=na.omit)
-
-summary(lmm_adjusted_rand_slope)
-tidy(lmm_adjusted_rand_slope, conf.int = TRUE)
+# Run LMM for each cognitive measure
+lmm_results <- lapply(cognitive_measures, run_lmm, data = df_analysis)
+summary(lmm_results$Stroop3)
+summary(lmm_results$DSB)
+summary(lmm_results$Total_Money)
+summary(lmm_results$TOTALErr)
+summary(lmm_results$HVLTDelayedRecall)
 
 
- 
+# Name the results list
+names(lmm_results) <- cognitive_measures
+
